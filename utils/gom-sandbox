@@ -1,0 +1,249 @@
+#!/usr/bin/python3
+# Copyright 2016 Sam Thursfield <sam@afuera.me.uk>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, see <http://www.gnu.org/licenses/>.
+
+
+'''gom-sandbox: Test a GNOME Online Miner in isolation
+
+Example usage (to run a non-standard version of the Facebook miner):
+
+    python ./gom-sandbox org.gnome.OnlineMiners.Facebook \
+        --path=/opt/gnome/libexec/gom-facebook-miner
+
+Note that "sandbox" here doesn't imply any extra security; it simply allows
+you to test the miners without them writing any data to your main Tracker
+database.
+
+You may be prompted to unlock your GNOME Keyring at some point. This is
+required for the miners to be able to access the OAuth tokens recorded
+by GNOME Online Accounts; due to running in a separate D-Bus session we can't
+use the existing session's GNOME Keyring instance, and of course we can't
+automatically unlock the new one that we start.
+
+See also: equivalent tool in tracker.git: utils/sandbox/tracker-sandbox.py.
+
+'''
+
+from gi.repository import GLib, Gio
+
+import argparse
+import contextlib
+import locale
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+if sys.version[0] == 2:
+    import ConfigParser as configparser
+else:
+    import configparser
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Run a GNOME Online Miner in an isolated sandbox")
+    parser.add_argument(
+        'busname',
+        help="D-Bus name of the miner (e.g. org.gnome.OnlineMiners.Facebook)")
+    parser.add_argument(
+        '--path',
+        help="path to the miner program to run. If not specified, we attempt "
+             "to find and run the version installed in /usr")
+    parser.add_argument(
+        '--manual-start', action='store_true',
+        help="prompt the user to start the miner. This allows sandboxing a "
+             "miner while also running it in a debugger.")
+    return parser
+
+
+@contextlib.contextmanager
+def dbus_session_bus():
+    '''Yield a new D-Bus session bus, and return a Gio.DBusConnection to it.'''
+
+    bus_cmdline = ['dbus-daemon', '--session', '--print-address=1']
+    bus_process = subprocess.Popen(bus_cmdline, stdout=subprocess.PIPE)
+
+    try:
+        bus_address = bus_process.stdout.readline().decode('unicode-escape').strip()
+
+        bus_connection = Gio.DBusConnection.new_for_address_sync(
+            bus_address,
+            Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION |
+            Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT,
+            None, None)
+
+        bus_connection.address = bus_address
+
+        yield bus_connection
+    finally:
+        bus_process.terminate()
+        bus_process.wait()
+
+
+def wait_for_name_on_bus(bus, name, timeout=5):
+    '''Wait for a program to register an interface on a given D-Bus server.'''
+
+    loop = GLib.MainLoop()
+    error_list = []
+
+    def timeout_cb(error_list):
+        error_list.append(
+            RuntimeError("Name %s didn't appear on bus within %i seconds." %
+                         (name, timeout)))
+        loop.quit()
+
+    if timeout is not None:
+        timeout_source = GLib.timeout_add_seconds(timeout, timeout_cb,
+                                                  error_list)
+
+    def bus_name_appeared(name, owner, data):
+        loop.quit()
+
+    watch_id = Gio.bus_watch_name_on_connection(
+        bus, name, Gio.BusNameWatcherFlags.NONE, bus_name_appeared, None)
+
+    loop.run()
+
+    Gio.bus_unwatch_name(watch_id)
+
+    if len(error_list) > 0:
+        raise error_list[0]
+
+
+@contextlib.contextmanager
+def tracker_store(bus, data_location, program='/usr/libexec/tracker-store'):
+    '''Run an instance of tracker-store.
+
+    The data location is overridden so that the user's actual Tracker store
+    isn't touched by the sandboxed processes.
+
+    '''
+    env = os.environ.copy()
+    env['DBUS_SESSION_BUS_ADDRESS'] = bus.address
+
+    assert os.path.isdir(data_location)
+    env['XDG_DATA_HOME'] = os.path.join(data_location, 'data')
+    env['XDG_CONFIG_HOME'] = os.path.join(data_location, 'config')
+    env['XDG_CACHE_HOME'] = os.path.join(data_location, 'cache')
+    env['XDG_RUNTIME_DIR'] = os.path.join(data_location, 'run')
+
+    cmdline = [program]
+    process = subprocess.Popen(program, env=env)
+
+    try:
+        wait_for_name_on_bus(bus, 'org.freedesktop.Tracker1', timeout=5)
+        yield
+    finally:
+        process.terminate()
+        process.wait()
+
+
+@contextlib.contextmanager
+def gnome_keyring_daemon(bus, control_directory,
+                         program='/usr/bin/gnome-keyring-daemon'):
+    '''Run a gnome-keyring daemon.
+
+    There needs to be an unlocked gnome-keyring inside the sandbox, because
+    connections to the session-wide one from inside our sandbox will be refused.
+
+    '''
+    env = os.environ.copy()
+    env['DBUS_SESSION_BUS_ADDRESS'] = bus.address
+
+    cmdline = [program, '--components=secrets', '--foreground', '--unlock',
+               '--control-directory=%s' % control_directory]
+    process = subprocess.Popen(program, env=env)
+
+    try:
+        wait_for_name_on_bus(bus, 'org.freedesktop.secrets', timeout=5)
+        yield
+    finally:
+        process.terminate()
+        process.wait()
+
+
+def main():
+    locale.setlocale(locale.LC_ALL, '')
+
+    # Parse arguments and set defaults
+
+    args = argument_parser().parse_args()
+
+    if not Gio.dbus_is_name(args.busname):
+        raise RuntimeError("%s is not a valid D-Bus bus name." % args.busname)
+
+    if not args.path:
+        service_file = "/usr/share/dbus-1/services/%s.service" % args.busname
+        parser = configparser.ConfigParser()
+        parser.read(service_file)
+        args.path = parser.get('D-BUS Service', 'Exec')
+
+    # Set up sandbox
+
+    data_location = tempfile.mkdtemp()
+    keyring = os.path.join(data_location, 'keyring')
+
+    try:
+        with dbus_session_bus() as bus:
+            with tracker_store(bus=bus, data_location=data_location):
+                with gnome_keyring_daemon(bus=bus, control_directory=keyring):
+
+                    # Run the actual miner.
+
+                    miner_process = None
+
+                    extra_env = {
+                        'DBUS_SESSION_BUS_ADDRESS': bus.address,
+                        'GNOME_KEYRING_CONTROL': keyring,
+                    }
+
+                    if args.manual_start:
+                        print("Please start the miner, with the following "
+                              "environment variables set:")
+                        print(' '.join('%s=%s' % (k, v) for k, v in extra_env.items()))
+                        print("I am waiting for it to appear on that bus.")
+                        wait_for_name_on_bus(bus, args.busname, timeout=None)
+                    else:
+                        env = os.environ.copy()
+                        env.update(extra_env)
+
+                        miner_process = subprocess.Popen(args.path, env=env)
+                        wait_for_name_on_bus(bus, args.busname, timeout=5)
+
+                    miner_proxy = Gio.DBusProxy.new_sync(
+                        bus, Gio.DBusProxyFlags.DO_NOT_AUTO_START, None,
+                        args.busname, '/' + args.busname.replace('.', '/'),
+                        'org.gnome.OnlineMiners.Miner')
+
+                    miner_proxy.RefreshDB ('(as)', ['documents', 'photos'],
+                                           timeout=1000000)
+
+                    if miner_process:
+                        miner_process.terminate()
+                        miner_process.wait()
+
+    finally:
+        # Clean up all the tracker-store data.
+        shutil.rmtree(data_location)
+
+
+try:
+    main()
+except RuntimeError as e:
+    sys.stderr.write("ERROR: %s\n" % e)
+    sys.exit(1)
