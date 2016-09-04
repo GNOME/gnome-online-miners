@@ -38,6 +38,7 @@ struct _GomApplication
   GQueue *queue;
   GType miner_type;
   gboolean refreshing;
+  gboolean refresh_db_called;
 };
 
 struct _GomApplicationClass
@@ -163,6 +164,8 @@ gom_application_refresh_db (GomApplication *self,
 {
   gchar **index_types;
 
+  self->refresh_db_called = TRUE;
+
   index_types = g_strdupv ((gchar **) arg_index_types);
   g_object_set_data_full (G_OBJECT (invocation), "index-types", index_types, (GDestroyNotify) g_strfreev);
   g_queue_push_tail (self->queue, g_object_ref (invocation));
@@ -249,6 +252,15 @@ static void
 gom_application_dispose (GObject *object)
 {
   GomApplication *self = GOM_APPLICATION (object);
+
+  if (! self->refresh_db_called)
+    {
+      g_printerr ("%s: Miner process was executed but the RefreshDB D-Bus "
+                  "method was never called. You must call the "
+                  "org.gnome.OnlineMiners.Miner.RefreshDB method to cause "
+                  "an online miner to start mining.\n",
+                  g_application_get_application_id (G_APPLICATION (self)));
+    }
 
   g_clear_object (&self->cancellable);
   g_clear_object (&self->miner);
