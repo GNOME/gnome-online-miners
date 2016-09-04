@@ -864,11 +864,13 @@ gom_miner_refresh_db_real (GomMiner *self, GTask *task)
   GList *accounts, *content_objects, *acc_objects, *l;
   GomMinerClass *miner_class = GOM_MINER_GET_CLASS (self);
   gboolean skip_photos, skip_documents;
+  gint n_accounts_with_correct_provider_type = 0;
 
   content_objects = NULL;
   acc_objects = NULL;
 
   accounts = goa_client_get_accounts (self->priv->client);
+
   for (l = accounts; l != NULL; l = l->next)
     {
       object = l->data;
@@ -880,6 +882,8 @@ gom_miner_refresh_db_real (GomMiner *self, GTask *task)
       provider_type = goa_account_get_provider_type (account);
       if (g_strcmp0 (provider_type, miner_class->goa_provider_type) != 0)
         continue;
+
+      n_accounts_with_correct_provider_type ++;
 
       acc_objects = g_list_append (acc_objects, g_object_ref (object));
       skip_photos = skip_documents = TRUE;
@@ -894,10 +898,19 @@ gom_miner_refresh_db_real (GomMiner *self, GTask *task)
         skip_documents = FALSE;
 
       if (skip_photos && skip_documents)
-        continue;
+        {
+          g_debug ("No matching content types for %s account %s",
+                   provider_type, goa_account_get_identity (account));
+          continue;
+        }
 
       content_objects = g_list_append (content_objects, g_object_ref (object));
     }
+
+  g_debug ("Found %i account(s) of type '%s' in the GNOME Online Accounts "
+           "database.",
+           n_accounts_with_correct_provider_type,
+           miner_class->goa_provider_type);
 
   g_list_free_full (accounts, g_object_unref);
 
