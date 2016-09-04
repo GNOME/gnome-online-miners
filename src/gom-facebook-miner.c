@@ -370,6 +370,7 @@ query_facebook (GomAccountMinerJob *job,
   if (local_error != NULL)
     goto out;
 
+  g_debug ("Found %i Facebook photo albums for user %s", g_list_length (albums), me_name);
   for (l = albums; l != NULL; l = l->next)
     {
       GFBGraphAlbum *album = GFBGRAPH_ALBUM (l->data);
