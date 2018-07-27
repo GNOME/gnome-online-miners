@@ -1,3 +1,10 @@
+Overview of changes in 3.29.90
+==============================
+
+* Bugs fixed:
+ 779947 Don't install the D-Bus service file for disabled miners
+
+
 Overview of changes in 3.26.0
 =============================
 
