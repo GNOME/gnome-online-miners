@@ -20,7 +20,7 @@
   <homepage rdf:resource="https://wiki.gnome.org/Projects/GnomeOnlineMiners" />
   <license rdf:resource="http://usefulinc.com/doap/licenses/gpl" />
   <download-page rdf:resource="http://download.gnome.org/sources/gnome-online-miners" />
-  <bug-database rdf:resource="https://bugzilla.gnome.org/enter_bug.cgi?product=gnome-online-miners" />
+  <bug-database rdf:resource="https://gitlab.gnome.org/GNOME/gnome-online-miners/issues/" />
 
   <programming-language>C</programming-language>
 
