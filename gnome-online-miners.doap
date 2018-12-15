@@ -26,8 +26,8 @@
 
   <repository>
     <GitRepository>
-      <location rdf:resource="git://git.gnome.org/gnome-online-miners" />
-      <browse rdf:resource="https://git.gnome.org/browse/gnome-online-miners/" />
+      <location rdf:resource="https://gitlab.gnome.org/GNOME/gnome-online-miners.git" />
+      <browse rdf:resource="https://gitlab.gnome.org/GNOME/gnome-online-miners" />
     </GitRepository>
   </repository>
 
