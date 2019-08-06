@@ -701,7 +701,7 @@ gom_miner_cleanup_old_accounts (GomMiner *self,
 static void
 gom_miner_refresh_db_real (GomMiner *self, GTask *task)
 {
-  GoaDocuments *documents;
+  GoaFiles *files;
   GoaPhotos *photos;
   GoaAccount *account;
   GoaObject *object;
@@ -729,13 +729,13 @@ gom_miner_refresh_db_real (GomMiner *self, GTask *task)
       acc_objects = g_list_append (acc_objects, g_object_ref (object));
       skip_photos = skip_documents = TRUE;
 
-      documents = goa_object_peek_documents (object);
+      files = goa_object_peek_files (object);
       photos = goa_object_peek_photos (object);
 
       if (gom_miner_supports_type (self, "photos") && photos != NULL)
         skip_photos = FALSE;
 
-      if (gom_miner_supports_type (self, "documents") && documents != NULL)
+      if (gom_miner_supports_type (self, "documents") && files != NULL)
         skip_documents = FALSE;
 
       if (skip_photos && skip_documents)
@@ -812,7 +812,7 @@ gom_miner_insert_shared_content_async (GomMiner *self,
                                        gpointer user_data)
 {
   GTask *task = NULL;
-  GoaDocuments *documents;
+  GoaFiles *files;
   GoaObject *object = NULL;
   GoaPhotos *photos;
   InsertSharedContentData *data;
@@ -840,10 +840,10 @@ gom_miner_insert_shared_content_async (GomMiner *self,
       goto out;
     }
 
-  documents = goa_object_peek_documents (object);
+  files = goa_object_peek_files (object);
   photos = goa_object_peek_photos (object);
 
-  if (g_strcmp0 (shared_type, "documents") == 0 && documents == NULL)
+  if (g_strcmp0 (shared_type, "documents") == 0 && files == NULL)
     {
       /* throw error */
       goto out;

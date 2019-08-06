@@ -1091,7 +1091,7 @@ create_services (GomMiner *self,
 
   authorizer = gdata_goa_authorizer_new (object);
 
-  if (gom_miner_supports_type (self, "documents") && goa_object_peek_documents (object) != NULL)
+  if (gom_miner_supports_type (self, "documents") && goa_object_peek_files (object) != NULL)
     {
       GDataDocumentsService *service;
 
