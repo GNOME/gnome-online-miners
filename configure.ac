@@ -1,5 +1,5 @@
 AC_INIT([GNOME Online Miners],
-        [3.30.0],
+        [3.33.92],
         [https://bugzilla.gnome.org/enter_bug.cgi?product=gnome-online-miners],
         [gnome-online-miners],
         [https://wiki.gnome.org/Projects/GnomeOnlineMiners])
