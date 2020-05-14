@@ -221,6 +221,7 @@ gom_miner_check_pending_jobs (GTask *task)
     return;
 
   g_task_return_boolean (task, TRUE);
+  g_clear_object (&cleanup_job->self);
   g_slice_free (CleanupJob, cleanup_job);
 }
 
@@ -461,7 +462,9 @@ miner_job_process_ready_cb (GObject *source,
   cleanup_job->pending_jobs = g_list_remove (cleanup_job->pending_jobs,
                                              account_miner_job);
 
+  /* This will free the cleanup job data if there are no more pending jobs. */
   gom_miner_check_pending_jobs (account_miner_job->parent_task);
+
   gom_account_miner_job_free (account_miner_job);
 }
 
@@ -520,9 +523,8 @@ cleanup_old_accounts_done (gpointer data)
       job->old_datasources = NULL;
     }
 
+  /* This will free the task data if there are no more pending jobs */
   gom_miner_check_pending_jobs (task);
-
-  g_clear_object (&job->self);
 
   return FALSE;
 }
@@ -689,6 +691,8 @@ gom_miner_cleanup_old_accounts (GomMiner *self,
                                 GTask *task)
 {
   CleanupJob *job = g_slice_new0 (CleanupJob);
+
+  g_return_if_fail (GOM_IS_MINER (self));
 
   job->self = g_object_ref (self);
   job->content_objects = content_objects;
