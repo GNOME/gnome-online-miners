@@ -208,7 +208,7 @@ gom_tracker_sparql_connection_insert_or_replace_triple (TrackerSparqlConnection 
   insert = g_string_new (NULL);
   g_string_append_printf
     (insert,
-     "INSERT OR REPLACE %s { <%s> a nie:InformationElement ; %s %s }",
+     "INSERT OR REPLACE %s { <%s> a nie:InformationElement, nie:DataObject ; %s %s }",
      graph_str, resource, property_name, quoted);
   g_free (quoted);
 
