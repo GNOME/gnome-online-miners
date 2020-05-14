@@ -408,7 +408,7 @@ gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection
   gchar *retval = NULL;
   gchar *select = NULL;
 
-  g_return_val_if_fail (TRACKER_SPARQL_IS_CONNECTION (connection), NULL);
+  g_return_val_if_fail (TRACKER_IS_SPARQL_CONNECTION (connection), NULL);
   g_return_val_if_fail (cancellable == NULL || G_IS_CANCELLABLE (cancellable), NULL);
   g_return_val_if_fail (error == NULL || *error == NULL, NULL);
   g_return_val_if_fail (make != NULL || model != NULL, NULL);

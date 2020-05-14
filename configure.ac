@@ -21,7 +21,7 @@ AC_HEADER_STDC
 
 GDATA_MIN_VERSION=0.15.2
 GFBGRAPH_MIN_VERSION=0.2.2
-GLIB_MIN_VERSION=2.35.1
+GLIB_MIN_VERSION=2.56.0
 GOA_MIN_VERSION=3.13.3
 GRILO_MIN_VERSION=0.3.0
 ZAPOJIT_MIN_VERSION=0.0.2
@@ -36,7 +36,7 @@ PKG_CHECK_MODULES(GIO, [gio-2.0 gio-unix-2.0])
 PKG_CHECK_MODULES(GOA, [goa-1.0 >= $GOA_MIN_VERSION])
 AC_DEFINE([GOA_API_IS_SUBJECT_TO_CHANGE], [], [We are aware that GOA's API can change])
 
-PKG_CHECK_MODULES(TRACKER, [tracker-miner-2.0 tracker-sparql-2.0])
+PKG_CHECK_MODULES(TRACKER, [tracker-sparql-3.0])
 
 # Facebook
 AC_ARG_ENABLE([facebook], [AS_HELP_STRING([--enable-facebook], [Enable Facebook miner])], [], [enable_facebook=yes])

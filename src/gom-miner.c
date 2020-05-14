@@ -33,12 +33,13 @@ static void gom_miner_initable_interface_init (GInitableIface *iface);
 G_DEFINE_TYPE_WITH_CODE (GomMiner, gom_miner, G_TYPE_OBJECT,
                          G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE, gom_miner_initable_interface_init))
 
-
 struct _GomMinerPrivate {
   GoaClient *client;
   GError *client_error;
 
+  gchar *bus_name;
   TrackerSparqlConnection *connection;
+  TrackerEndpointDBus *endpoint;
   GError *connection_error;
 
   gchar *display_name;
@@ -61,6 +62,14 @@ typedef struct {
   gchar *source_urn;
   gpointer service;
 } InsertSharedContentData;
+
+typedef enum
+{
+    PROP_BUS_NAME = 1,
+    N_PROPERTIES
+} GomMinerProperty;
+
+static GParamSpec *obj_properties[N_PROPERTIES] = { NULL, };
 
 static GThreadPool *cleanup_pool;
 
@@ -136,6 +145,58 @@ gom_miner_dispose (GObject *object)
 }
 
 static void
+gom_miner_init_database (GomMiner      *self,
+                         GCancellable  *cancellable,
+                         GError       **error)
+{
+  TrackerSparqlConnectionFlags flags;
+  g_autoptr (GFile) store_path = NULL;
+  g_autoptr (GDBusConnection) bus = NULL;
+  GError *inner_error = NULL;
+
+  flags = TRACKER_SPARQL_CONNECTION_FLAGS_FTS_ENABLE_STEMMER |
+          TRACKER_SPARQL_CONNECTION_FLAGS_FTS_ENABLE_UNACCENT |
+          TRACKER_SPARQL_CONNECTION_FLAGS_FTS_ENABLE_STOP_WORDS |
+          TRACKER_SPARQL_CONNECTION_FLAGS_FTS_IGNORE_NUMBERS;
+
+  store_path = g_file_new_build_filename (g_get_user_cache_dir (),
+                                          "gnome-online-miners",
+                                          self->priv->bus_name,
+                                          NULL);
+
+  self->priv->connection = tracker_sparql_connection_new (flags,
+                                                          store_path,
+                                                          tracker_sparql_get_ontology_nepomuk (),
+                                                          cancellable,
+                                                          &inner_error);
+
+  if (inner_error)
+    {
+      g_propagate_error (error, inner_error);
+      return;
+    }
+
+  bus = g_bus_get_sync (G_BUS_TYPE_SESSION, NULL, &inner_error);
+
+  if (inner_error)
+    {
+      g_propagate_error (error, inner_error);
+      return;
+    }
+
+  self->priv->endpoint = tracker_endpoint_dbus_new (self->priv->connection,
+                                                    bus,
+                                                    NULL, /* object path */
+                                                    cancellable,
+                                                    &inner_error);
+  if (inner_error)
+    {
+      g_propagate_error (error, inner_error);
+      return;
+    }
+}
+
+static void
 gom_miner_init_goa (GomMiner  *self,
                     GError   **error)
 {
@@ -185,10 +246,10 @@ gom_miner_initable_init (GInitable     *initable,
 
   self = GOM_MINER (initable);
 
-  self->priv->connection = tracker_sparql_connection_get (cancellable, &inner_error);
+  gom_miner_init_database (self, cancellable, &inner_error);
   if (inner_error)
     {
-      g_propagate_prefixed_error (error, inner_error, "Unable to connect to Tracker store: ");
+      g_propagate_prefixed_error (error, inner_error, "Unable to set up Tracker database: ");
       return FALSE;
     }
 
@@ -213,6 +274,47 @@ gom_miner_init (GomMiner *self)
 }
 
 static void
+gom_miner_set_property (GObject      *object,
+                        guint         property_id,
+                        const GValue *value,
+                        GParamSpec   *pspec)
+{
+  GomMiner *self = GOM_MINER (object);
+
+  switch ((GomMinerProperty) property_id)
+    {
+      case PROP_BUS_NAME:
+        g_free (self->priv->bus_name);
+        self->priv->bus_name = g_value_dup_string (value);
+        break;
+
+      default:
+        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+        break;
+    }
+}
+
+static void
+gom_miner_get_property (GObject    *object,
+                        guint       property_id,
+                        GValue     *value,
+                        GParamSpec *pspec)
+{
+  GomMiner *self = GOM_MINER (object);
+
+  switch ((GomMinerProperty) property_id)
+    {
+       case PROP_BUS_NAME:
+         g_value_set_string (value, self->priv->bus_name);
+         break;
+
+       default:
+         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+         break;
+    }
+}
+
+static void
 gom_miner_initable_interface_init (GInitableIface *iface)
 {
   iface->init = gom_miner_initable_init;
@@ -224,6 +326,19 @@ gom_miner_class_init (GomMinerClass *klass)
   GObjectClass *oclass = G_OBJECT_CLASS (klass);
 
   oclass->dispose = gom_miner_dispose;
+  oclass->set_property = gom_miner_set_property;
+  oclass->get_property = gom_miner_get_property;
+
+  obj_properties[PROP_BUS_NAME] = g_param_spec_string ("bus-name",
+                                                       "Bus Name",
+                                                       "D-Bus name of the miner",
+                                                       NULL  /* default value */,
+                                                       G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE |
+                                                       G_PARAM_STATIC_STRINGS);
+
+  g_object_class_install_properties (oclass,
+                                     N_PROPERTIES,
+                                     obj_properties);
 
   cleanup_pool = g_thread_pool_new (cleanup_job, NULL, 1, FALSE, NULL);
 

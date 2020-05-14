@@ -233,7 +233,9 @@ gom_application_constructed (GObject *object)
 
   G_OBJECT_CLASS (gom_application_parent_class)->constructed (object);
 
-  self->miner = g_initable_new (self->miner_type, NULL, &error, NULL);
+  self->miner = g_initable_new (self->miner_type, NULL, &error,
+                                "bus-name", g_application_get_application_id (G_APPLICATION (self)),
+                                NULL);
 
   if (self->miner == NULL) {
     g_error (error->message);
