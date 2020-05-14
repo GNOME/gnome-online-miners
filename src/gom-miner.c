@@ -28,15 +28,15 @@
 
 #include "gom-miner.h"
 
-G_DEFINE_TYPE (GomMiner, gom_miner, G_TYPE_OBJECT)
+static void gom_miner_initable_iface_init (GInitableIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (GomMiner, gom_miner, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE, gom_miner_initable_iface_init))
 
 struct _GomMinerPrivate {
   GoaClient *client;
-  GError *client_error;
-
   TrackerSparqlConnection *connection;
-  GError *connection_error;
-
+  gboolean is_initialized;
   gchar *display_name;
   gchar **index_types;
 };
@@ -125,14 +125,12 @@ gom_miner_dispose (GObject *object)
 
   g_free (self->priv->display_name);
   g_strfreev (self->priv->index_types);
-  g_clear_error (&self->priv->client_error);
-  g_clear_error (&self->priv->connection_error);
 
   G_OBJECT_CLASS (gom_miner_parent_class)->dispose (object);
 }
 
 static void
-gom_miner_init_goa (GomMiner *self)
+gom_miner_init_goa (GomMiner *self, GError **error)
 {
   GoaAccount *account;
   GoaObject *object;
@@ -140,14 +138,10 @@ gom_miner_init_goa (GomMiner *self)
   GList *accounts, *l;
   GomMinerClass *miner_class = GOM_MINER_GET_CLASS (self);
 
-  self->priv->client = goa_client_new_sync (NULL, &self->priv->client_error);
+  self->priv->client = goa_client_new_sync (NULL, error);
 
-  if (self->priv->client_error != NULL)
-    {
-      g_critical ("Unable to create GoaClient: %s - indexing for %s will not work",
-                  self->priv->client_error->message, miner_class->goa_provider_type);
-      return;
-    }
+  if (self->priv->client == NULL)
+    return;
 
   accounts = goa_client_get_accounts (self->priv->client);
   for (l = accounts; l != NULL; l = l->next)
@@ -171,30 +165,12 @@ gom_miner_init_goa (GomMiner *self)
 }
 
 static void
-gom_miner_constructed (GObject *obj)
-{
-  GomMiner *self = GOM_MINER (obj);
-
-  G_OBJECT_CLASS (gom_miner_parent_class)->constructed (obj);
-
-  gom_miner_init_goa (self);
-}
-
-static void
 gom_miner_init (GomMiner *self)
 {
   GomMinerClass *klass = GOM_MINER_GET_CLASS (self);
 
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, GOM_TYPE_MINER, GomMinerPrivate);
   self->priv->display_name = g_strdup ("");
-
-  self->priv->connection = tracker_sparql_connection_get (NULL, &self->priv->connection_error);
-  if (self->priv->connection_error != NULL)
-    {
-      g_critical ("Unable to create TrackerSparqlConnection: %s - indexing for %s will not work",
-                  self->priv->connection_error->message,
-                  klass->goa_provider_type);
-    }
 }
 
 static void
@@ -202,12 +178,46 @@ gom_miner_class_init (GomMinerClass *klass)
 {
   GObjectClass *oclass = G_OBJECT_CLASS (klass);
 
-  oclass->constructed = gom_miner_constructed;
   oclass->dispose = gom_miner_dispose;
 
   cleanup_pool = g_thread_pool_new (cleanup_job, NULL, 1, FALSE, NULL);
 
   g_type_class_add_private (klass, sizeof (GomMinerPrivate));
+}
+
+static gboolean
+gom_miner_initable_init (GInitable *initable, GCancellable *cancellable, GError **error)
+{
+  GomMiner *self = GOM_MINER (initable);
+  gboolean ret_val = FALSE;
+
+  g_return_val_if_fail (!self->priv->is_initialized, FALSE);
+
+  self->priv->connection = tracker_sparql_connection_get (cancellable, error);
+  if (G_UNLIKELY (self->priv->connection == NULL))
+    {
+      g_prefix_error (error, "Unable to connect to Tracker store: ");
+      goto out;
+    }
+
+  gom_miner_init_goa (self, error);
+  if (G_UNLIKELY (self->priv->client == NULL))
+    {
+      g_prefix_error (error, "Unable to connect to GNOME Online Accounts: ");
+      goto out;
+    }
+
+  ret_val = TRUE;
+
+ out:
+  self->priv->is_initialized = TRUE;
+  return ret_val;
+}
+
+static void
+gom_miner_initable_iface_init (GInitableIface *iface)
+{
+  iface->init = gom_miner_initable_init;
 }
 
 static void
@@ -821,18 +831,6 @@ gom_miner_insert_shared_content_async (GomMiner *self,
   task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, gom_miner_insert_shared_content_async);
 
-  if (self->priv->client_error != NULL)
-    {
-      g_task_return_error (task, g_error_copy (self->priv->client_error));
-      goto out;
-    }
-
-  if (self->priv->connection_error != NULL)
-    {
-      g_task_return_error (task, g_error_copy (self->priv->connection_error));
-      goto out;
-    }
-
   object = goa_client_lookup_by_id (self->priv->client, account_id);
   if (object == NULL)
     {
@@ -895,22 +893,7 @@ gom_miner_refresh_db_async (GomMiner *self,
 
   task = g_task_new (self, cancellable, callback, user_data);
   g_task_set_source_tag (task, gom_miner_refresh_db_async);
-
-  if (self->priv->client_error != NULL)
-    {
-      g_task_return_error (task, g_error_copy (self->priv->client_error));
-      goto out;
-    }
-
-  if (self->priv->connection_error != NULL)
-    {
-      g_task_return_error (task, g_error_copy (self->priv->connection_error));
-      goto out;
-    }
-
   gom_miner_refresh_db_real (self, task);
-
- out:
   g_clear_object (&task);
 }
 

@@ -33,6 +33,7 @@ struct _GomApplication
 {
   GApplication parent;
   GCancellable *cancellable;
+  GError *miner_error;
   GomDBus *skeleton;
   GomMiner *miner;
   GQueue *queue;
@@ -89,6 +90,12 @@ gom_application_insert_shared_content (GomApplication *self,
                                        const gchar *shared_type,
                                        const gchar *source_urn)
 {
+  if (G_UNLIKELY (self->miner == NULL))
+    {
+      g_dbus_method_invocation_return_gerror (invocation, self->miner_error);
+      goto out;
+    }
+
   g_application_hold (G_APPLICATION (self));
   gom_miner_insert_shared_content_async (self->miner,
                                          account_id,
@@ -98,6 +105,8 @@ gom_application_insert_shared_content (GomApplication *self,
                                          self->cancellable,
                                          gom_application_insert_shared_content_cb,
                                          g_object_ref (invocation));
+
+ out:
   return TRUE;
 }
 
@@ -106,6 +115,8 @@ gom_application_process_queue (GomApplication *self)
 {
   GDBusMethodInvocation *invocation = NULL;
   const gchar **index_types;
+
+  g_assert (GOM_IS_MINER (self->miner));
 
   if (self->refreshing)
     goto out;
@@ -163,10 +174,18 @@ gom_application_refresh_db (GomApplication *self,
 {
   gchar **index_types;
 
+  if (G_UNLIKELY (self->miner == NULL))
+    {
+      g_dbus_method_invocation_return_gerror (invocation, self->miner_error);
+      goto out;
+    }
+
   index_types = g_strdupv ((gchar **) arg_index_types);
   g_object_set_data_full (G_OBJECT (invocation), "index-types", index_types, (GDestroyNotify) g_strfreev);
   g_queue_push_tail (self->queue, g_object_ref (invocation));
   gom_application_process_queue (self);
+
+ out:
   return TRUE;
 }
 
@@ -228,13 +247,17 @@ static void
 gom_application_constructed (GObject *object)
 {
   GomApplication *self = GOM_APPLICATION (object);
-  const gchar *display_name;
 
   G_OBJECT_CLASS (gom_application_parent_class)->constructed (object);
 
-  self->miner = g_object_new (self->miner_type, NULL);
-  display_name = gom_miner_get_display_name (self->miner);
-  gom_dbus_set_display_name (self->skeleton, display_name);
+  self->miner = g_initable_new (self->miner_type, NULL, &self->miner_error, NULL);
+  if (G_LIKELY (self->miner != NULL))
+    {
+      const gchar *display_name;
+
+      display_name = gom_miner_get_display_name (self->miner);
+      gom_dbus_set_display_name (self->skeleton, display_name);
+    }
 }
 
 static void
@@ -253,6 +276,16 @@ gom_application_dispose (GObject *object)
     }
 
   G_OBJECT_CLASS (gom_application_parent_class)->dispose (object);
+}
+
+static void
+gom_application_finalize (GObject *object)
+{
+  GomApplication *self = GOM_APPLICATION (object);
+
+  g_clear_error (&self->miner_error);
+
+  G_OBJECT_CLASS (gom_application_parent_class)->finalize (object);
 }
 
 static void
@@ -298,6 +331,7 @@ gom_application_class_init (GomApplicationClass *klass)
 
   oclass->constructed = gom_application_constructed;
   oclass->dispose = gom_application_dispose;
+  oclass->finalize = gom_application_finalize;
   oclass->set_property = gom_application_set_property;
   application_class->dbus_register = gom_application_dbus_register;
   application_class->dbus_unregister = gom_application_dbus_unregister;
