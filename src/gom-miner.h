@@ -61,6 +61,7 @@ typedef struct _GomMinerPrivate GomMinerPrivate;
 typedef struct {
   GomMiner *miner;
   TrackerSparqlConnection *connection;
+  gchar *bus_name;
 
   GoaAccount *account;
   GHashTable *services;
