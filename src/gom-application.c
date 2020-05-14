@@ -229,10 +229,15 @@ gom_application_constructed (GObject *object)
 {
   GomApplication *self = GOM_APPLICATION (object);
   const gchar *display_name;
+  GError *error = NULL;
 
   G_OBJECT_CLASS (gom_application_parent_class)->constructed (object);
 
-  self->miner = g_object_new (self->miner_type, NULL);
+  self->miner = g_initable_new (self->miner_type, NULL, &error, NULL);
+
+  if (self->miner == NULL)
+    g_error ("%s", error->message);
+
   display_name = gom_miner_get_display_name (self->miner);
   gom_dbus_set_display_name (self->skeleton, display_name);
 }

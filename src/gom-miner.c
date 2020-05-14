@@ -28,7 +28,11 @@
 
 #include "gom-miner.h"
 
-G_DEFINE_TYPE (GomMiner, gom_miner, G_TYPE_OBJECT)
+static void gom_miner_initable_interface_init (GInitableIface *iface);
+
+G_DEFINE_TYPE_WITH_CODE (GomMiner, gom_miner, G_TYPE_OBJECT,
+                         G_IMPLEMENT_INTERFACE (G_TYPE_INITABLE, gom_miner_initable_interface_init))
+
 
 struct _GomMinerPrivate {
   GoaClient *client;
@@ -132,20 +136,21 @@ gom_miner_dispose (GObject *object)
 }
 
 static void
-gom_miner_init_goa (GomMiner *self)
+gom_miner_init_goa (GomMiner  *self,
+                    GError   **error)
 {
   GoaAccount *account;
   GoaObject *object;
   const gchar *provider_type;
   GList *accounts, *l;
   GomMinerClass *miner_class = GOM_MINER_GET_CLASS (self);
+  GError *inner_error = NULL;
 
-  self->priv->client = goa_client_new_sync (NULL, &self->priv->client_error);
+  self->priv->client = goa_client_new_sync (NULL, &inner_error);
 
-  if (self->priv->client_error != NULL)
+  if (inner_error)
     {
-      g_critical ("Unable to create GoaClient: %s - indexing for %s will not work",
-                  self->priv->client_error->message, miner_class->goa_provider_type);
+      g_propagate_error (error, inner_error);
       return;
     }
 
@@ -170,15 +175,33 @@ gom_miner_init_goa (GomMiner *self)
   g_list_free_full (accounts, g_object_unref);
 }
 
-static void
-gom_miner_constructed (GObject *obj)
+static gboolean
+gom_miner_initable_init (GInitable     *initable,
+                         GCancellable  *cancellable,
+                         GError       **error)
 {
-  GomMiner *self = GOM_MINER (obj);
+  GError *inner_error = NULL;
+  GomMiner *self;
 
-  G_OBJECT_CLASS (gom_miner_parent_class)->constructed (obj);
+  self = GOM_MINER (initable);
 
-  gom_miner_init_goa (self);
+  self->priv->connection = tracker_sparql_connection_get (cancellable, &inner_error);
+  if (inner_error)
+    {
+      g_propagate_prefixed_error (error, inner_error, "Unable to connect to Tracker store: ");
+      return FALSE;
+    }
+
+  gom_miner_init_goa (self, &inner_error);
+  if (inner_error)
+    {
+      g_propagate_prefixed_error (error, inner_error, "Unable to connect to GNOME Online Accounts: ");
+      return FALSE;
+    }
+
+  return TRUE;
 }
+
 
 static void
 gom_miner_init (GomMiner *self)
@@ -187,14 +210,12 @@ gom_miner_init (GomMiner *self)
 
   self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self, GOM_TYPE_MINER, GomMinerPrivate);
   self->priv->display_name = g_strdup ("");
+}
 
-  self->priv->connection = tracker_sparql_connection_get (NULL, &self->priv->connection_error);
-  if (self->priv->connection_error != NULL)
-    {
-      g_critical ("Unable to create TrackerSparqlConnection: %s - indexing for %s will not work",
-                  self->priv->connection_error->message,
-                  klass->goa_provider_type);
-    }
+static void
+gom_miner_initable_interface_init (GInitableIface *iface)
+{
+  iface->init = gom_miner_initable_init;
 }
 
 static void
@@ -202,7 +223,6 @@ gom_miner_class_init (GomMinerClass *klass)
 {
   GObjectClass *oclass = G_OBJECT_CLASS (klass);
 
-  oclass->constructed = gom_miner_constructed;
   oclass->dispose = gom_miner_dispose;
 
   cleanup_pool = g_thread_pool_new (cleanup_job, NULL, 1, FALSE, NULL);
