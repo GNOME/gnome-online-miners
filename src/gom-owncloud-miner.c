@@ -100,14 +100,14 @@ account_miner_job_process_file (GomAccountMinerJob *job,
     (connection,
      cancellable, error,
      &resource_exists,
-     datasource_urn, identifier,
+     TRACKER_DOCUMENTS_GRAPH, identifier,
      "nfo:RemoteDataObject", class, NULL);
 
   if (*error != NULL)
     goto out;
 
   gom_tracker_update_datasource (connection, datasource_urn,
-                                 resource_exists, identifier, resource,
+                                 resource_exists, TRACKER_DOCUMENTS_GRAPH, resource,
                                  cancellable, error);
 
   if (*error != NULL)
@@ -117,7 +117,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
   modification_time = g_date_time_new_from_timeval_local (&tv);
   new_mtime = g_date_time_to_unix (modification_time);
   mtime_changed = gom_tracker_update_mtime (connection, new_mtime,
-                                            resource_exists, identifier, resource,
+                                            resource_exists, TRACKER_DOCUMENTS_GRAPH, resource,
                                             cancellable, error);
 
   if (*error != NULL)
@@ -133,7 +133,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_DOCUMENTS_GRAPH, resource,
      "nie:url", uri);
 
   if (*error != NULL)
@@ -156,7 +156,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
           parent_resource_urn = gom_tracker_sparql_connection_ensure_resource
             (connection, cancellable, error,
              NULL,
-             datasource_urn, parent_identifier,
+             GOM_GRAPH, parent_identifier,
              "nfo:RemoteDataObject", "nfo:DataContainer", NULL);
           g_checksum_reset (checksum);
           g_free (parent_identifier);
@@ -168,7 +168,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
           gom_tracker_sparql_connection_insert_or_replace_triple
             (connection,
              cancellable, error,
-             datasource_urn, resource,
+             TRACKER_DOCUMENTS_GRAPH, resource,
              "nie:isPartOf", parent_resource_urn);
           g_free (parent_resource_urn);
 
@@ -182,7 +182,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
           gom_tracker_sparql_connection_insert_or_replace_triple
             (connection,
              cancellable, error,
-             datasource_urn, resource,
+             TRACKER_DOCUMENTS_GRAPH, resource,
              "nie:mimeType", mime);
 
           if (*error != NULL)
@@ -194,7 +194,7 @@ account_miner_job_process_file (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_DOCUMENTS_GRAPH, resource,
      "nfo:fileName", display_name);
 
   if (*error != NULL)
@@ -416,6 +416,11 @@ query_owncloud (GomAccountMinerJob *job,
   mount = g_volume_get_mount (volume);
   if (mount == NULL)
     {
+      g_autofree gchar *volume_name;
+
+      volume_name = g_volume_get_name (volume);
+      g_debug ("Mounting Online Account volume %s", volume_name);
+
       data.error = error;
 
       context = g_main_context_new ();
@@ -436,6 +441,7 @@ query_owncloud (GomAccountMinerJob *job,
     }
 
   root = g_mount_get_root (mount);
+  g_debug ("Got volume from gnome-online-accounts: root is %s", g_file_peek_path (root));
   account_miner_job_traverse_dir (job, connection, previous_resources, datasource_urn, root, TRUE, cancellable, error);
 
   g_object_unref (root);

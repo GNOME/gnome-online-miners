@@ -26,16 +26,11 @@
 #include "gom-tracker.h"
 #include "gom-utils.h"
 
-static gchar *
-_tracker_utils_format_into_graph (const gchar *graph)
-{
-  return (graph != NULL) ? g_strdup_printf ("INTO <%s> ", graph) : g_strdup ("");
-}
-
 static gboolean
 gom_tracker_sparql_connection_get_string_attribute (TrackerSparqlConnection *connection,
                                                     GCancellable *cancellable,
                                                     GError **error,
+                                                    const gchar *graph,
                                                     const gchar *resource,
                                                     const gchar *attribute,
                                                     gchar **value)
@@ -45,8 +40,8 @@ gom_tracker_sparql_connection_get_string_attribute (TrackerSparqlConnection *con
   const gchar *string_value = NULL;
   gboolean res;
 
-  g_string_append_printf (select, "SELECT ?val { <%s> %s ?val }",
-                          resource, attribute);
+  g_string_append_printf (select, "SELECT ?val { GRAPH <%s> { <%s> %s ?val } }",
+                          graph, resource, attribute);
   cursor = tracker_sparql_connection_query (connection,
                                             select->str,
                                             cancellable, error);
@@ -86,7 +81,8 @@ gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connecti
                                                const gchar *class,
                                                ...)
 {
-  GString *select, *insert, *inner;
+  GString *select, *inner;
+  gchar *insert;
   va_list args;
   const gchar *arg;
   TrackerSparqlCursor *cursor;
@@ -97,6 +93,8 @@ gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connecti
   GVariantIter *iter;
   gchar *key = NULL, *val = NULL;
   gboolean exists = FALSE;
+
+  g_return_val_if_fail (graph != NULL, NULL);
 
   /* build the inner query with all the classes */
   va_start (args, class);
@@ -112,7 +110,7 @@ gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connecti
   /* query if such a resource is already in the DB */
   select = g_string_new (NULL);
   g_string_append_printf (select,
-                          "SELECT ?urn WHERE { ?urn %s }", inner->str);
+                          "SELECT ?urn WHERE { GRAPH <%s> { ?urn %s } }", graph, inner->str);
 
   cursor = tracker_sparql_connection_query (connection,
                                             select->str,
@@ -138,19 +136,12 @@ gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connecti
     }
 
   /* not found, create the resource */
-  insert = g_string_new (NULL);
-  graph_str = _tracker_utils_format_into_graph (graph);
-
-  g_string_append_printf (insert, "INSERT %s { _:res %s }",
-                          graph_str, inner->str);
-  g_free (graph_str);
-  g_string_free (inner, TRUE);
-
+  insert = g_strdup_printf ("INSERT INTO <%s> { _:res %s }",
+                            graph, inner->str);
   insert_res =
-    tracker_sparql_connection_update_blank (connection, insert->str,
+    tracker_sparql_connection_update_blank (connection, insert,
                                             G_PRIORITY_DEFAULT, NULL, error);
-
-  g_string_free (insert, TRUE);
+  g_free (insert);
 
   if (*error != NULL)
     goto out;
@@ -194,10 +185,10 @@ gom_tracker_sparql_connection_insert_or_replace_triple (TrackerSparqlConnection 
                                                         const gchar *property_value)
 {
   GString *insert;
-  gchar *graph_str, *quoted;
+  gchar *quoted;
   gboolean retval = TRUE;
 
-  graph_str = _tracker_utils_format_into_graph (graph);
+  g_return_val_if_fail (graph != NULL, FALSE);
 
   /* the "null" value must not be quoted */
   if (property_value == NULL)
@@ -208,8 +199,8 @@ gom_tracker_sparql_connection_insert_or_replace_triple (TrackerSparqlConnection 
   insert = g_string_new (NULL);
   g_string_append_printf
     (insert,
-     "INSERT OR REPLACE %s { <%s> a nie:InformationElement, nie:DataObject ; %s %s }",
-     graph_str, resource, property_name, quoted);
+     "INSERT OR REPLACE INTO <%s> { <%s> a nie:InformationElement, nie:DataObject ; %s %s }",
+     graph, resource, property_name, quoted);
   g_free (quoted);
 
   g_debug ("Insert or replace triple: query %s", insert->str);
@@ -222,8 +213,6 @@ gom_tracker_sparql_connection_insert_or_replace_triple (TrackerSparqlConnection 
 
   if (*error != NULL)
     retval = FALSE;
-
-  g_free (graph_str);
 
   return retval;
 }
@@ -271,6 +260,7 @@ gboolean
 gom_tracker_sparql_connection_toggle_favorite (TrackerSparqlConnection *connection,
                                                GCancellable *cancellable,
                                                GError **error,
+                                               const gchar *graph,
                                                const gchar *resource,
                                                gboolean favorite)
 {
@@ -279,15 +269,15 @@ gom_tracker_sparql_connection_toggle_favorite (TrackerSparqlConnection *connecti
   gboolean retval = TRUE;
 
   if (favorite)
-    op_str = "INSERT OR REPLACE";
+    op_str = "INSERT OR REPLACE INTO";
   else
-    op_str = "DELETE";
+    op_str = "DELETE FROM";
 
   update = g_string_new (NULL);
   g_string_append_printf
     (update,
-     "%s { <%s> nao:hasTag nao:predefined-tag-favorite }",
-     op_str, resource);
+     "%s <%s> { <%s> nao:hasTag nao:predefined-tag-favorite }",
+     op_str, graph, resource);
 
   g_debug ("Toggle favorite: query %s", update->str);
 
@@ -321,9 +311,13 @@ gom_tracker_utils_ensure_contact_resource (TrackerSparqlConnection *connection,
   mail_uri = g_strconcat ("mailto:", email, NULL);
   select = g_string_new (NULL);
   g_string_append_printf (select,
-                          "SELECT ?urn WHERE { ?urn a nco:Contact . "
-                          "?urn nco:hasEmailAddress ?mail . "
-                          "FILTER (fn:contains(?mail, \"%s\" )) }", mail_uri);
+                          "SELECT ?urn WHERE { "
+                          "  GRAPH <%s> { "
+                          "    ?urn a nco:Contact . "
+                          "    ?urn nco:hasEmailAddress ?mail . "
+                          "    FILTER (fn:contains(?mail, \"%s\" )) "
+                          "  }"
+                          "}", TRACKER_CONTACTS_GRAPH, mail_uri);
 
   cursor = tracker_sparql_connection_query (connection,
                                             select->str,
@@ -351,8 +345,9 @@ gom_tracker_utils_ensure_contact_resource (TrackerSparqlConnection *connection,
   insert = g_string_new (NULL);
 
   g_string_append_printf (insert,
-                          "INSERT { <%s> a nco:EmailAddress ; nco:emailAddress \"%s\" . "
+                          "INSERT INTO <%s> { <%s> a nco:EmailAddress ; nco:emailAddress \"%s\" . "
                           "_:res a nco:Contact ; nco:hasEmailAddress <%s> ; nco:fullname \"%s\" . }",
+                          TRACKER_CONTACTS_GRAPH,
                           mail_uri, email,
                           mail_uri, fullname);
 
@@ -397,6 +392,7 @@ gchar *
 gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection,
                                              GCancellable *cancellable,
                                              GError **error,
+                                             const gchar *graph,
                                              const gchar *make,
                                              const gchar *model)
 {
@@ -416,7 +412,7 @@ gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection
   equip_uri = tracker_sparql_escape_uri_printf ("urn:equipment:%s:%s:",
                                                 make != NULL ? make : "",
                                                 model != NULL ? model : "");
-  select = g_strdup_printf ("SELECT <%s> WHERE { }", equip_uri);
+  select = g_strdup_printf ("SELECT <%s> WHERE { GRAPH <%s> { } }", equip_uri, graph);
 
   local_error = NULL;
   cursor = tracker_sparql_connection_query (connection, select, cancellable, &local_error);
@@ -449,7 +445,8 @@ gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection
     }
 
   /* not found, create the resource */
-  insert = g_strdup_printf ("INSERT { <%s> a nfo:Equipment ; nfo:manufacturer \"%s\" ; nfo:model \"%s\" }",
+  insert = g_strdup_printf ("INSERT INTO <%s> { <%s> a nfo:Equipment ; nfo:manufacturer \"%s\" ; nfo:model \"%s\" }",
+                            graph,
                             equip_uri,
                             make,
                             model);
@@ -480,7 +477,7 @@ void
 gom_tracker_update_datasource (TrackerSparqlConnection  *connection,
                                const gchar              *datasource_urn,
                                gboolean                  resource_exists,
-                               const gchar              *identifier,
+                               const gchar              *graph,
                                const gchar              *resource,
                                GCancellable             *cancellable,
                                GError                  **error)
@@ -498,7 +495,7 @@ gom_tracker_update_datasource (TrackerSparqlConnection  *connection,
 
       res = gom_tracker_sparql_connection_get_string_attribute
         (connection, cancellable, error,
-         resource, "nie:dataSource", &old_value);
+         graph, resource, "nie:dataSource", &old_value);
       g_clear_error (error);
 
       if (res)
@@ -514,7 +511,7 @@ gom_tracker_update_datasource (TrackerSparqlConnection  *connection,
   if (set_datasource)
     gom_tracker_sparql_connection_set_triple
       (connection, cancellable, error,
-       identifier, resource,
+       graph, resource,
        "nie:dataSource", datasource_urn);
 }
 
@@ -522,7 +519,7 @@ gboolean
 gom_tracker_update_mtime (TrackerSparqlConnection  *connection,
                           gint64                    new_mtime,
                           gboolean                  resource_exists,
-                          const gchar              *identifier,
+                          const gchar              *graph,
                           const gchar              *resource,
                           GCancellable             *cancellable,
                           GError                  **error)
@@ -536,7 +533,7 @@ gom_tracker_update_mtime (TrackerSparqlConnection  *connection,
     {
       res = gom_tracker_sparql_connection_get_string_attribute
         (connection, cancellable, error,
-         resource, "nie:contentLastModified", &old_value);
+         graph, resource, "nie:contentLastModified", &old_value);
       g_clear_error (error);
 
       if (res)
@@ -552,7 +549,7 @@ gom_tracker_update_mtime (TrackerSparqlConnection  *connection,
   date = gom_iso8601_from_timestamp (new_mtime);
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection, cancellable, error,
-     identifier, resource,
+     graph, resource,
      "nie:contentLastModified", date);
   g_free (date);
 

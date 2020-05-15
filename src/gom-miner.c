@@ -375,7 +375,7 @@ gom_miner_ensure_datasource (GomMiner *self,
                           "  <%s> a nie:DataSource ; nao:identifier \"%s\" . "
                           "  <%s> a nie:InformationElement ; nie:rootElementOf <%s> ; nie:version \"%d\""
                           "}",
-                          datasource_urn,
+                          GOM_GRAPH,
                           datasource_urn, klass->miner_identifier,
                           root_element_urn, datasource_urn, klass->version);
 
@@ -400,8 +400,8 @@ gom_account_miner_job_query_existing (GomAccountMinerJob *job,
 
   select = g_string_new (NULL);
   g_string_append_printf (select,
-                          "SELECT ?urn nao:identifier(?urn) WHERE { ?urn nie:dataSource <%s> }",
-                          job->datasource_urn);
+                          "SELECT ?urn ?id WHERE { GRAPH <%s> { ?urn nie:dataSource <%s> ; nao:identifier ?id . } }",
+                          GOM_GRAPH, job->datasource_urn);
 
   cursor = tracker_sparql_connection_query (job->connection,
                                             select->str,
@@ -414,9 +414,21 @@ gom_account_miner_job_query_existing (GomAccountMinerJob *job,
 
   while (tracker_sparql_cursor_next (cursor, cancellable, error))
     {
-      g_hash_table_insert (job->previous_resources,
-                           g_strdup (tracker_sparql_cursor_get_string (cursor, 1, NULL)),
-                           g_strdup (tracker_sparql_cursor_get_string (cursor, 0, NULL)));
+      const gchar *urn, *identifier;
+
+      urn = tracker_sparql_cursor_get_string (cursor, 0, NULL);
+      identifier = tracker_sparql_cursor_get_string (cursor, 1, NULL);
+
+      if (identifier != NULL)
+        {
+          g_hash_table_insert (job->previous_resources,
+                               g_strdup (identifier),
+                               g_strdup (urn));
+        }
+      else
+        {
+          g_warning ("Missing identifier for urn %s", urn);
+        }
     }
 
   g_object_unref (cursor);
@@ -488,16 +500,19 @@ gom_account_miner_job (GTask *task,
   if (error != NULL)
     goto out;
 
+  g_debug ("account miner: Querying existing accounts stored in database");
   gom_account_miner_job_query_existing (job, &error);
 
   if (error != NULL)
     goto out;
 
+  g_debug ("account miner: Querying remote server");
   gom_account_miner_job_query (job, &error);
 
   if (error != NULL)
     goto out;
 
+  g_debug ("account miner: Removing stale accounts");
   gom_account_miner_job_cleanup_previous (job, &error);
 
   if (error != NULL)
@@ -751,10 +766,15 @@ cleanup_job (gpointer data,
 
   /* find all our datasources in the tracker DB */
   select = g_string_new (NULL);
-  g_string_append_printf (select, "SELECT ?datasource nie:version(?root) WHERE { "
-                          "?datasource a nie:DataSource . "
-                          "?datasource nao:identifier \"%s\" . "
-                          "OPTIONAL { ?root nie:rootElementOf ?datasource } }",
+  g_string_append_printf (select,
+                          "SELECT ?datasource nie:version(?root) WHERE { "
+                          "  GRAPH <%s> { "
+                          "    ?datasource a nie:DataSource . "
+                          "    ?datasource nao:identifier \"%s\" . "
+                          "    OPTIONAL { ?root nie:rootElementOf ?datasource } "
+                          "  }"
+                          "}",
+                          GOM_GRAPH,
                           klass->miner_identifier);
 
   cursor = tracker_sparql_connection_query (self->priv->connection,

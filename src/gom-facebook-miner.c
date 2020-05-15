@@ -70,7 +70,7 @@ account_miner_job_process_photo (GomAccountMinerJob *job,
     (connection,
      cancellable, error,
      &resource_exists,
-     datasource_urn, identifier,
+     TRACKER_PICTURES_GRAPH, identifier,
      "nfo:RemoteDataObject", class, NULL);
 
   if (*error != NULL)
@@ -239,7 +239,7 @@ account_miner_job_process_album (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:url", album_link);
 
   if (*error != NULL)
@@ -248,7 +248,7 @@ account_miner_job_process_album (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:description", album_description);
 
   if (*error != NULL)
@@ -257,7 +257,7 @@ account_miner_job_process_album (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:title", album_name);
 
   if (*error != NULL)
@@ -274,7 +274,7 @@ account_miner_job_process_album (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nco:creator", contact_resource);
   g_free (contact_resource);
 
@@ -284,7 +284,7 @@ account_miner_job_process_album (GomAccountMinerJob *job,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:contentCreated", album_created_time);
 
   if (*error != NULL)
