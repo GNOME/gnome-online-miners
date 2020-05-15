@@ -1,0 +1,25 @@
+stages:
+  - test
+
+build-alpine-latest:
+  stage: test
+  image: docker.io/alpine:latest
+  before_script:
+    - apk add autoconf autoconf-archive automake gcc gfbgraph-dev git glib-dev gnome-online-accounts-dev grilo-dev libc-dev libgdata-dev libtool make pkgconfig tracker-dev
+  script:
+    - NOCONFIGURE=1 ./autogen.sh
+    # zapojit isn't packaged in Alpine so we can't build the Windows Live miner.
+    - ./configure --disable-windows-live
+    - make -j
+
+build-fedora-latest:
+  stage: test
+  image: docker.io/fedora:latest
+  before_script:
+    - dnf -y install 'dnf-command(builddep)'
+    - dnf -y builddep gnome-online-miners
+    - dnf -y install autoconf-archive git make
+  script:
+    - NOCONFIGURE=1 ./autogen.sh
+    - ./configure
+    - make -j
