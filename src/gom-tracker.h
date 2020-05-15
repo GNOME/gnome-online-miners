@@ -29,6 +29,14 @@
 
 G_BEGIN_DECLS
 
+/* The graph where we store account meta information */
+#define GOM_GRAPH "tracker.api.gnome.org/ontology/v3/gnome-online-miners"
+
+/* Graphs where we store content information */
+#define TRACKER_CONTACTS_GRAPH "http://tracker.api.gnome.org/ontology/v3/tracker#Contacts"
+#define TRACKER_DOCUMENTS_GRAPH "http://tracker.api.gnome.org/ontology/v3/tracker#Documents"
+#define TRACKER_PICTURES_GRAPH "http://tracker.api.gnome.org/ontology/v3/tracker#Pictures"
+
 gchar *gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connection,
                                                       GCancellable *cancellable,
                                                       GError **error,
@@ -57,6 +65,7 @@ gboolean gom_tracker_sparql_connection_set_triple (TrackerSparqlConnection *conn
 gboolean gom_tracker_sparql_connection_toggle_favorite (TrackerSparqlConnection *connection,
                                                         GCancellable *cancellable,
                                                         GError **error,
+                                                        const gchar *graph,
                                                         const gchar *resource,
                                                         gboolean favorite);
 
@@ -69,20 +78,21 @@ gchar* gom_tracker_utils_ensure_contact_resource (TrackerSparqlConnection *conne
 gchar *gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection,
                                                     GCancellable *cancellable,
                                                     GError **error,
+                                                    const gchar *graph,
                                                     const gchar *make,
                                                     const gchar *model);
 
 void gom_tracker_update_datasource (TrackerSparqlConnection  *connection,
                                     const gchar              *datasource_urn,
                                     gboolean                  resource_exists,
-                                    const gchar              *identifier,
+                                    const gchar              *graph,
                                     const gchar              *resource,
                                     GCancellable             *cancellable,
                                     GError                  **error);
 gboolean gom_tracker_update_mtime (TrackerSparqlConnection  *connection,
                                    gint64                    new_mtime,
                                    gboolean                  resource_exists,
-                                   const gchar              *identifier,
+                                   const gchar              *graph,
                                    const gchar              *resource,
                                    GCancellable             *cancellable,
                                    GError                  **error);

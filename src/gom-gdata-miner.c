@@ -120,7 +120,7 @@ account_miner_job_process_entry (TrackerSparqlConnection *connection,
     (connection,
      cancellable, error,
      &resource_exists,
-     datasource_urn, identifier,
+     TRACKER_DOCUMENTS_GRAPH, identifier,
      "nfo:RemoteDataObject", class, NULL);
 
   if (*error != NULL)
@@ -187,7 +187,7 @@ account_miner_job_process_entry (TrackerSparqlConnection *connection,
       parent_resource_urn = gom_tracker_sparql_connection_ensure_resource
         (connection, cancellable, error,
          NULL,
-         datasource_urn, parent_resource_id,
+         GOM_GRAPH, parent_resource_id,
          "nfo:RemoteDataObject", "nfo:DataContainer", NULL);
       g_free (parent_resource_id);
 
@@ -219,7 +219,7 @@ account_miner_job_process_entry (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_toggle_favorite
     (connection,
      cancellable, error,
-     resource, starred);
+     TRACKER_PICTURES_GRAPH, resource, starred);
 
   if (*error != NULL)
     goto out;
@@ -400,14 +400,14 @@ account_miner_job_process_photo (TrackerSparqlConnection *connection,
     (connection,
      cancellable, error,
      &resource_exists,
-     datasource_urn, identifier,
+     TRACKER_PICTURES_GRAPH, identifier,
      "nfo:RemoteDataObject", "nmm:Photo", NULL);
 
   if (*error != NULL)
     goto out;
 
   gom_tracker_update_datasource (connection, datasource_urn,
-                                 resource_exists, identifier, resource,
+                                 resource_exists, TRACKER_PICTURES_GRAPH, resource,
                                  cancellable, error);
   if (*error != NULL)
     goto out;
@@ -566,6 +566,7 @@ account_miner_job_process_photo (TrackerSparqlConnection *connection,
       equipment_resource = gom_tracker_utils_ensure_equipment_resource (connection,
                                                                         cancellable,
                                                                         error,
+                                                                        TRACKER_PICTURES_GRAPH,
                                                                         make,
                                                                         model);
 
@@ -665,7 +666,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
     (connection,
      cancellable, error,
      &resource_exists,
-     datasource_urn, identifier,
+     TRACKER_PICTURES_GRAPH, identifier,
      "nfo:RemoteDataObject", "nfo:DataContainer",
      NULL);
 
@@ -674,7 +675,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
 
   gom_tracker_update_datasource
     (connection, datasource_urn,
-     resource_exists, identifier, resource,
+     resource_exists, TRACKER_PICTURES_GRAPH, resource,
      cancellable, error);
 
   if (*error != NULL)
@@ -685,7 +686,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
    */
   new_mtime = gdata_entry_get_updated (GDATA_ENTRY (album));
   mtime_changed = gom_tracker_update_mtime (connection, new_mtime,
-                                            resource_exists, identifier, resource,
+                                            resource_exists, TRACKER_PICTURES_GRAPH, resource,
                                             cancellable, error);
 
   if (*error != NULL)
@@ -703,7 +704,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:url", alternate_uri);
 
   if (*error != NULL)
@@ -713,7 +714,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:description", summary);
 
   if (*error != NULL)
@@ -723,7 +724,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:title", title);
 
   if (*error != NULL)
@@ -743,7 +744,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nco:creator", contact_resource);
   g_free (contact_resource);
 
@@ -755,7 +756,7 @@ account_miner_job_process_album (TrackerSparqlConnection *connection,
   gom_tracker_sparql_connection_insert_or_replace_triple
     (connection,
      cancellable, error,
-     datasource_urn, resource,
+     TRACKER_PICTURES_GRAPH, resource,
      "nie:contentCreated", date);
   g_free (date);
 
@@ -865,7 +866,7 @@ insert_shared_content_photos (TrackerSparqlConnection *connection,
   if (!gom_tracker_sparql_connection_insert_or_replace_triple (connection,
                                                                cancellable,
                                                                &local_error,
-                                                               datasource_urn,
+                                                               TRACKER_PICTURES_GRAPH,
                                                                source_urn,
                                                                "nie:relatedTo",
                                                                photo_resource_urn))
@@ -878,7 +879,7 @@ insert_shared_content_photos (TrackerSparqlConnection *connection,
   if (!gom_tracker_sparql_connection_insert_or_replace_triple (connection,
                                                                cancellable,
                                                                &local_error,
-                                                               datasource_urn,
+                                                               TRACKER_PICTURES_GRAPH,
                                                                photo_resource_urn,
                                                                "nie:links",
                                                                source_urn))
