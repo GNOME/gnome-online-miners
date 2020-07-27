@@ -138,9 +138,7 @@ gom_tracker_sparql_connection_ensure_resource (TrackerSparqlConnection *connecti
   /* not found, create the resource */
   insert = g_strdup_printf ("INSERT INTO <%s> { _:res %s }",
                             graph, inner->str);
-  insert_res =
-    tracker_sparql_connection_update_blank (connection, insert,
-                                            G_PRIORITY_DEFAULT, NULL, error);
+  insert_res = tracker_sparql_connection_update_blank (connection, insert, NULL, error);
   g_free (insert);
 
   if (*error != NULL)
@@ -205,9 +203,7 @@ gom_tracker_sparql_connection_insert_or_replace_triple (TrackerSparqlConnection 
 
   g_debug ("Insert or replace triple: query %s", insert->str);
 
-  tracker_sparql_connection_update (connection, insert->str,
-                                    G_PRIORITY_DEFAULT, cancellable,
-                                    error);
+  tracker_sparql_connection_update (connection, insert->str, cancellable, error);
 
   g_string_free (insert, TRUE);
 
@@ -235,9 +231,7 @@ gom_tracker_sparql_connection_set_triple (TrackerSparqlConnection *connection,
      "DELETE { <%s> %s ?val } WHERE { <%s> %s ?val }", resource,
      property_name, resource, property_name);
 
-  tracker_sparql_connection_update (connection, delete->str,
-                                    G_PRIORITY_DEFAULT, cancellable,
-                                    error);
+  tracker_sparql_connection_update (connection, delete->str, cancellable, error);
 
   g_string_free (delete, TRUE);
   if (*error != NULL)
@@ -281,9 +275,7 @@ gom_tracker_sparql_connection_toggle_favorite (TrackerSparqlConnection *connecti
 
   g_debug ("Toggle favorite: query %s", update->str);
 
-  tracker_sparql_connection_update (connection, update->str,
-                                    G_PRIORITY_DEFAULT, cancellable,
-                                    error);
+  tracker_sparql_connection_update (connection, update->str, cancellable, error);
 
   g_string_free (update, TRUE);
 
@@ -351,9 +343,7 @@ gom_tracker_utils_ensure_contact_resource (TrackerSparqlConnection *connection,
                           mail_uri, email,
                           mail_uri, fullname);
 
-  insert_res =
-    tracker_sparql_connection_update_blank (connection, insert->str,
-                                            G_PRIORITY_DEFAULT, cancellable, error);
+  insert_res = tracker_sparql_connection_update_blank (connection, insert->str, cancellable, error);
 
   g_string_free (insert, TRUE);
 
@@ -450,7 +440,7 @@ gom_tracker_utils_ensure_equipment_resource (TrackerSparqlConnection *connection
                             model);
 
   local_error = NULL;
-  tracker_sparql_connection_update (connection, insert, G_PRIORITY_DEFAULT, cancellable, &local_error);
+  tracker_sparql_connection_update (connection, insert, cancellable, &local_error);
   if (local_error != NULL)
     {
       g_propagate_error (error, local_error);

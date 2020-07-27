@@ -382,7 +382,6 @@ gom_miner_ensure_datasource (GomMiner *self,
 
   tracker_sparql_connection_update (self->priv->connection,
                                     datasource_insert->str,
-                                    G_PRIORITY_DEFAULT,
                                     cancellable,
                                     error);
 
@@ -469,7 +468,6 @@ gom_account_miner_job_cleanup_previous (GomAccountMinerJob *job,
 
   tracker_sparql_connection_update (job->connection,
                                     delete->str,
-                                    G_PRIORITY_DEFAULT,
                                     cancellable,
                                     error);
 
@@ -709,7 +707,6 @@ cleanup_job_do_cleanup (CleanupJob *job, GCancellable *cancellable)
 
   tracker_sparql_connection_update (self->priv->connection,
                                     update->str,
-                                    G_PRIORITY_DEFAULT,
                                     cancellable,
                                     &error);
   g_string_free (update, TRUE);
