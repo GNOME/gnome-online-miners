@@ -1,6 +1,6 @@
 AC_INIT([GNOME Online Miners],
         [3.34.0],
-        [https://bugzilla.gnome.org/enter_bug.cgi?product=gnome-online-miners],
+        [https://gitlab.gnome.org/GNOME/gnome-online-miners/-/issues],
         [gnome-online-miners],
         [https://wiki.gnome.org/Projects/GnomeOnlineMiners])
 AC_PREREQ(2.63)
